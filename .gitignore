@@ -1,0 +1,41 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build / packaging (PyInstaller)
+build/
+dist/
+*.spec
+*.exe
+*.egg-info/
+*.egg
+.eggs/
+
+# Tests / coverage / linter cache
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs, local environment files
+*.log
+.env
