@@ -176,3 +176,43 @@ def calculate_expected_qber(config: SimConfig) -> float:
 
 def calculate_undetected_probability(sample_size: int) -> float:
     return (0.75) ** sample_size
+
+def correct_bits(text: str, expected_len: Optional[int] = None) -> list[int]:
+    bit_text = text.strip()
+    if not bit_text:
+        raise ValueError("A bitlánc nem lehet üres!")
+
+    bits = []
+    for c in bit_text:
+        if c == '0':
+            bits.append(0)
+        elif c == '1':
+            bits.append(1)
+        else:
+            raise ValueError(f"Érvénytelen karakter a bitláncban: '{c}'. Csak '0' és '1' megengedett.")
+
+    if expected_len is not None and len(bits) != expected_len:
+        raise ValueError(f"A megadott bitek száma ({len(bits)}) nem egyezik az elvárt hosszal ({expected_len}).")
+
+    return bits
+
+def correct_bases(text, expected_len = None) -> list[Basis]:
+    base_text = text.strip()
+    if not base_text:
+        raise ValueError("A bázislánc nem lehet üres!")
+
+    bases = []
+    for c in base_text:
+        if c == '+':
+            bases.append(Basis.RECTILINEAR)
+        elif c in ('x', 'X'):
+            bases.append(Basis.DIAGONAL)
+        else:
+            raise ValueError(f"Érvénytelen báziskarakter a bázis láncban: '{c}'. Csak '+' és 'X' megengedett.")
+
+    if expected_len is not None and len(bases) != expected_len:
+        raise ValueError(
+            f"A megadott bázisok száma ({len(bases)}) nem egyezik az elvárt hosszal ({expected_len})."
+        )
+
+    return bases
