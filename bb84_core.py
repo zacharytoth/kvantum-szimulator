@@ -79,7 +79,7 @@ def get_rng(seed: Optional[int] = None) -> random.Random:
     return random.Random(seed)
 
 def eve_intercept(photon, eve_basis, rng):
-    bit, collapsed = measure(photon, eve_basis, rng)
+    bit, collapsed = measure_photon(photon, eve_basis, rng)
     return bit, collapsed
 
 def should_intercept(config, rng) -> bool:
@@ -90,3 +90,44 @@ def choose_eve_bases(n, config, rng) -> list[Basis]:
         return config.manual_eve_bases
     else:
         return [rng.choice(list(Basis)) for _ in range(n)]
+def encode_photon(bit: int, basis: Basis) -> Photon:
+    if basis == Basis.RECTILINEAR and bit == 0:
+        return Photon(0, "→")
+    elif basis == Basis.RECTILINEAR and bit == 1:
+        return Photon(90, "↑")
+    elif basis == Basis.DIAGONAL and bit == 0:
+        return Photon(45, "↗")
+    elif basis == Basis.DIAGONAL and bit == 1:
+        return Photon(135, "↖")
+
+def measure_photon(photon: Photon, basis: Basis, rng: random.Random) -> tuple[int, Photon]:
+    statevector = encode_photon(0, basis=basis).state_vector
+    px, py = photon.state_vector
+    dot_product = statevector[0]*px + statevector[1]*py
+    p = round(dot_product**2, 9)
+    if p > 1.0:
+        p = 1.0
+    elif p < 0.0:
+        p = 0.0
+    if rng.random() < p:
+        bit = 0
+    else:
+        bit = 1
+
+    collapsed = encode_photon(bit=bit, basis=basis)
+    return bit, collapsed
+
+def apply_noise(photon: Photon, noise_rate: float, rng: random.Random) -> Photon:
+    if rng.random() < noise_rate:
+        new_angle = (photon.angle+90) % 180
+        if new_angle == 0:
+            new_symbol = "→"
+        elif new_angle == 45:
+            new_symbol = "↗"
+        elif new_angle == 90:
+            new_symbol = "↑"
+        elif new_angle == 135:
+            new_symbol = "↖"
+        return Photon(new_angle, new_symbol)
+    else:
+        return photon
