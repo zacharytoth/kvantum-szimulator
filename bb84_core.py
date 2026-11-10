@@ -77,3 +77,16 @@ class SimState:
 
 def get_rng(seed: Optional[int] = None) -> random.Random:
     return random.Random(seed)
+
+def eve_intercept(photon, eve_basis, rng):
+    bit, collapsed = measure(photon, eve_basis, rng)
+    return bit, collapsed
+
+def should_intercept(config, rng) -> bool:
+    return config.eve_present and rng.random() < config.eve_ratio
+
+def choose_eve_bases(n, config, rng) -> list[Basis]:
+    if config.manual_eve_bases is not None:
+        return config.manual_eve_bases
+    else:
+        return [rng.choice(list(Basis)) for _ in range(n)]
