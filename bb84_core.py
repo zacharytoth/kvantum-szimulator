@@ -144,4 +144,35 @@ def send_and_measure(photon:Photon, bob_basis: Basis, config: SimConfig, rng: ra
     
     current_photon = apply_noise(current_photon, config.noise_rate, rng)
     bob_bit, _ = measure_photon(current_photon, bob_basis, rng)
-    return eve_basis, eve_bit, current_photon, bob_bit
+    return photon,eve_basis, eve_bit, current_photon, bob_bit
+
+def sifting(alice_bases: list[Basis], bob_bases: list[Basis]) -> list[int]:
+    return [i for i in range(min(len(alice_bases), len(bob_bases)))
+            if alice_bases[i] == bob_bases[i]]
+
+def sample_qber(sift_indices, sample_ratio, rng) -> list[int]:
+    if not sift_indices or sample_ratio <= 0:
+        return []
+
+    k = max(1, round(len(sift_indices) * sample_ratio))
+    k = min(k, len(sift_indices))
+
+    return sorted(rng.sample(sift_indices, k))
+
+def estimate_qber(alice_bits, bob_bits, sample_indices) -> float:
+    if not sample_indices:
+        return 0.0
+    else:
+        errors = sum([1 for i in sample_indices if alice_bits[i] != bob_bits[i]])
+        return errors / len(sample_indices)
+
+def get_final_key(alice_bits, sift_indices, sample_indices):
+    return [alice_bits[i] for i in sift_indices if i not in sample_indices]
+
+def calculate_expected_qber(config: SimConfig) -> float:
+    eve_contribution = (config.eve_ratio * 0.25) if config.eve_present else 0.0
+    return min(1.0, eve_contribution + config.noise_rate)
+
+
+def calculate_undetected_probability(sample_size: int) -> float:
+    return (0.75) ** sample_size
