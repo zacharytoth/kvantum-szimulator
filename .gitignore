@@ -1,0 +1,19 @@
+# Virtuális környezet
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# PyInstaller build
+build/
+dist/
+*.spec
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
