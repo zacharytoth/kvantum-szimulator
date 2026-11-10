@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 import math
 import random
-from typing import List, Optional
+from typing import Optional
 import copy
 
 class Basis(str, Enum):
@@ -40,10 +40,10 @@ class SimConfig:
     sample_ratio: float = 0.25
     qber_threshold: float = 0.11
     seed: Optional[int] = None
-    manual_alice_bits: Optional[List[int]] = None
-    manual_alice_bases: Optional[List[Basis]] = None
-    manual_bob_bases: Optional[List[Basis]] = None
-    manual_eve_bases: Optional[List[Basis]] = None
+    manual_alice_bits: Optional[list[int]] = None
+    manual_alice_bases: Optional[list[Basis]] = None
+    manual_bob_bases: Optional[list[Basis]] = None
+    manual_eve_bases: Optional[list[Basis]] = None
 
 
 #Az adott állapotnak a gui-nak küldött adatai
@@ -53,44 +53,45 @@ class SimState:
     config: SimConfig = field(default_factory=SimConfig)
 
     #Alice adatai
-    alice_bits: List[int] = field(default_factory=list)
-    alice_bases: List[Basis] = field(default_factory=list)
-    photons: List[Photon] = field(default_factory=list)
+    alice_bits: list[int] = field(default_factory=list)
+    alice_bases: list[Basis] = field(default_factory=list)
+    photons: list[Photon] = field(default_factory=list)
 
     #Eve adatai 
-    eve_bits: List[Optional[int]] = field(default_factory=list)
-    eve_bases: List[Optional[Basis]] = field(default_factory=list)
-    sent_photons: List[Photon] = field(default_factory=list)
+    eve_bits: list[Optional[int]] = field(default_factory=list)
+    eve_bases: list[Optional[Basis]] = field(default_factory=list)
+    sent_photons: list[Photon] = field(default_factory=list)
 
     #Bob adatai
-    bob_bits: List[int] = field(default_factory=list)
-    bob_bases: List[Basis] = field(default_factory=list)
+    bob_bits: list[int] = field(default_factory=list)
+    bob_bases: list[Basis] = field(default_factory=list)
 
     #Utofeldolgozas
-    sifted_indices: List[int] = field(default_factory=list)
-    sample_indices: List[int] = field(default_factory=list)
+    sifted_indices: list[int] = field(default_factory=list)
+    sample_indices: list[int] = field(default_factory=list)
 
     #Eredmenyek
     qber: Optional[float] = None
     expected_qber: Optional[float] = None
     key_accepted: Optional[bool] = None
-    final_key: Optional[List[int]] = None
+    final_key: Optional[list[int]] = None
 
 def get_rng(seed: Optional[int] = None) -> random.Random:
     return random.Random(seed)
 
-def eve_intercept(photon, eve_basis, rng):
+def eve_intercept(photon: Photon, eve_basis: Basis, rng: random.Random) -> tuple[int, Photon]:
     bit, collapsed = measure_photon(photon, eve_basis, rng)
     return bit, collapsed
 
-def should_intercept(config, rng) -> bool:
+def should_intercept(config: SimConfig, rng: random.Random) -> bool:
     return config.eve_present and rng.random() < config.eve_ratio
 
-def choose_eve_bases(n, config, rng) -> list[Basis]:
+def choose_eve_bases(n: int, config: SimConfig, rng: random.Random) -> list[Basis]:
     if config.manual_eve_bases is not None:
         return config.manual_eve_bases
     else:
         return [rng.choice(list(Basis)) for _ in range(n)]
+
 def encode_photon(bit: int, basis: Basis) -> Photon:
     if basis == Basis.RECTILINEAR and bit == 0:
         return Photon(0, "→")
@@ -133,7 +134,13 @@ def apply_noise(photon: Photon, noise_rate: float, rng: random.Random) -> Photon
     else:
         return photon
 
-def send_and_measure(photon:Photon, bob_basis: Basis, config: SimConfig, rng: random.Random, eve_basis: Optional[Basis]=None):
+def send_and_measure(
+    photon: Photon,
+    bob_basis: Basis,
+    config: SimConfig,
+    rng: random.Random,
+    eve_basis: Optional[Basis] = None,
+) -> tuple[Photon, Optional[Basis], Optional[int], Photon, int]:
     if should_intercept(config=config, rng=rng):
         if eve_basis is None:
             eve_basis = rng.choice(list(Basis))
@@ -145,40 +152,41 @@ def send_and_measure(photon:Photon, bob_basis: Basis, config: SimConfig, rng: ra
     
     current_photon = apply_noise(current_photon, config.noise_rate, rng)
     bob_bit, _ = measure_photon(current_photon, bob_basis, rng)
-    return photon,eve_basis, eve_bit, current_photon, bob_bit
+    return photon, eve_basis, eve_bit, current_photon, bob_bit
 
-def sifting(alice_bases: list[Basis], bob_bases: list[Basis]) -> list[int]:
+def sift(alice_bases: list[Basis], bob_bases: list[Basis]) -> list[int]:
     return [i for i in range(min(len(alice_bases), len(bob_bases)))
             if alice_bases[i] == bob_bases[i]]
 
-def sample_qber(sift_indices, sample_ratio, rng) -> list[int]:
-    if not sift_indices or sample_ratio <= 0:
+def select_sample(sifted_indices: list[int], sample_ratio: float, rng: random.Random) -> list[int]:
+    if not sifted_indices or sample_ratio <= 0:
         return []
 
-    k = max(1, round(len(sift_indices) * sample_ratio))
-    k = min(k, len(sift_indices))
+    k = max(1, round(len(sifted_indices) * sample_ratio))
+    k = min(k, len(sifted_indices))
 
-    return sorted(rng.sample(sift_indices, k))
+    return sorted(rng.sample(sifted_indices, k))
 
-def estimate_qber(alice_bits, bob_bits, sample_indices) -> float:
+def estimate_qber(alice_bits: list[int], bob_bits: list[int], sample_indices: list[int]) -> float:
     if not sample_indices:
         return 0.0
     else:
         errors = sum([1 for i in sample_indices if alice_bits[i] != bob_bits[i]])
         return errors / len(sample_indices)
 
-def get_final_key(alice_bits, sift_indices, sample_indices):
-    return [alice_bits[i] for i in sift_indices if i not in sample_indices]
+def extract_final_key(alice_bits: list[int], sifted_indices: list[int], sample_indices: list[int]) -> list[int]:
+    sample_set = set(sample_indices)
+    return [alice_bits[i] for i in sifted_indices if i not in sample_set]
 
-def calculate_expected_qber(config: SimConfig) -> float:
+def expected_qber(config: SimConfig) -> float:
     eve_contribution = (config.eve_ratio * 0.25) if config.eve_present else 0.0
     return min(1.0, eve_contribution + config.noise_rate)
 
 
-def calculate_undetected_probability(sample_size: int) -> float:
+def undetected_probability(sample_size: int) -> float:
     return (0.75) ** sample_size
 
-def correct_bits(text: str, expected_len: Optional[int] = None) -> list[int]:
+def parse_bits(text: str, expected_len: Optional[int] = None) -> list[int]:
     bit_text = text.strip()
     if not bit_text:
         raise ValueError("A bitlánc nem lehet üres!")
@@ -197,7 +205,7 @@ def correct_bits(text: str, expected_len: Optional[int] = None) -> list[int]:
 
     return bits
 
-def correct_bases(text, expected_len = None) -> list[Basis]:
+def parse_bases(text: str, expected_len: Optional[int] = None) -> list[Basis]:
     base_text = text.strip()
     if not base_text:
         raise ValueError("A bázislánc nem lehet üres!")
@@ -209,7 +217,7 @@ def correct_bases(text, expected_len = None) -> list[Basis]:
         elif c in ('x', 'X'):
             bases.append(Basis.DIAGONAL)
         else:
-            raise ValueError(f"Érvénytelen báziskarakter a bázis láncban: '{c}'. Csak '+' és 'X' megengedett.")
+            raise ValueError(f"Érvénytelen báziskarakter a bázisláncban: '{c}'. Csak '+' és 'x' megengedett.")
 
     if expected_len is not None and len(bases) != expected_len:
         raise ValueError(
@@ -308,22 +316,22 @@ class BB84Simulation:
                     self._state.bob_bits.append(bit)
                 self._state.step = Step.BOB_MEASURE
             case Step.BOB_MEASURE:
-                self._state.sifted_indices = sifting(self._state.alice_bases, self._state.bob_bases)
+                self._state.sifted_indices = sift(self._state.alice_bases, self._state.bob_bases)
                 self._state.step = Step.SIFTING
             case Step.SIFTING:
-                self._state.sample_indices = sample_qber(
+                self._state.sample_indices = select_sample(
                     self._state.sifted_indices, self.config.sample_ratio, self.rng
                 )
                 self._state.qber = estimate_qber(
                     self._state.alice_bits, self._state.bob_bits, self._state.sample_indices
                 )
-                self._state.expected_qber = calculate_expected_qber(self.config)
+                self._state.expected_qber = expected_qber(self.config)
                 self._state.step = Step.QBER
             case Step.QBER:
                 has_key = bool(self._state.sifted_indices) and len(self._state.sifted_indices) > len(self._state.sample_indices)
                 if has_key and self._state.qber is not None and self._state.qber <= self.config.qber_threshold:
                     self._state.key_accepted = True
-                    self._state.final_key = get_final_key(
+                    self._state.final_key = extract_final_key(
                         self._state.alice_bits,
                         self._state.sifted_indices,
                         self._state.sample_indices
