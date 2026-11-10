@@ -131,3 +131,17 @@ def apply_noise(photon: Photon, noise_rate: float, rng: random.Random) -> Photon
         return Photon(new_angle, new_symbol)
     else:
         return photon
+
+def send_and_measure(photon:Photon, bob_basis: Basis, config: SimConfig, rng: random.Random, eve_basis: Optional[Basis]=None):
+    if should_intercept(config=config, rng=rng):
+        if eve_basis is None:
+            eve_basis = rng.choice(list(Basis))
+        eve_bit, current_photon = eve_intercept(photon=photon, eve_basis=eve_basis, rng=rng)
+    else:
+        eve_basis = None
+        eve_bit = None
+        current_photon = photon
+    
+    current_photon = apply_noise(current_photon, config.noise_rate, rng)
+    bob_bit, _ = measure_photon(current_photon, bob_basis, rng)
+    return eve_basis, eve_bit, current_photon, bob_bit
