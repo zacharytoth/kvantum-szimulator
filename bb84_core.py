@@ -320,7 +320,8 @@ class BB84Simulation:
                 self._state.expected_qber = calculate_expected_qber(self.config)
                 self._state.step = Step.QBER
             case Step.QBER:
-                if self._state.qber is not None and self._state.qber <= self.config.qber_threshold:
+                has_key = bool(self._state.sifted_indices) and len(self._state.sifted_indices) > len(self._state.sample_indices)
+                if has_key and self._state.qber is not None and self._state.qber <= self.config.qber_threshold:
                     self._state.key_accepted = True
                     self._state.final_key = get_final_key(
                         self._state.alice_bits,
