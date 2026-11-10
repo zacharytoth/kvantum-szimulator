@@ -3,6 +3,7 @@ from enum import Enum, IntEnum
 import math
 import random
 from typing import List, Optional
+import copy
 
 class Basis(str, Enum):
     RECTILINEAR = "+"
@@ -216,3 +217,121 @@ def correct_bases(text, expected_len = None) -> list[Basis]:
         )
 
     return bases
+
+
+class BB84Simulation:
+    def __init__(self, config: Optional[SimConfig] = None):
+        if config is None:
+            config = SimConfig()
+        self.config = config
+        self.rng = get_rng(config.seed)
+        self._state = SimState(step=Step.SETUP, config=config)
+        self._history: list[tuple[SimState, tuple]] = []
+
+    @property
+    def state(self) -> SimState:
+        return self._state
+
+    @property
+    def step(self) -> Step:
+        return self._state.step
+
+    def prev_step(self):
+        if not self._history:
+            return
+        previous_state, previous_rng_state = self._history.pop()
+        self._state = previous_state
+        self.rng.setstate(previous_rng_state)
+
+    def reset(self):
+        self._history.clear()
+        self.rng = get_rng(self.config.seed)
+        self._state = SimState(step=Step.SETUP, config=self.config)
+
+    def next_step(self):
+        if self._state.step == Step.RESULT:
+            return
+        self._history.append((copy.deepcopy(self._state), self.rng.getstate()))
+
+        n = self.config.n_bits
+        
+        match self._state.step:
+            case Step.SETUP:
+                if self.config.manual_alice_bits is not None:
+                    self._state.alice_bits = list(self.config.manual_alice_bits)
+                else:
+                    self._state.alice_bits = [self.rng.choice([0, 1]) for _ in range(n)]
+                self._state.step = Step.ALICE_BITS
+            case Step.ALICE_BITS:
+                if self.config.manual_alice_bases is not None:
+                    self._state.alice_bases = list(self.config.manual_alice_bases)
+                else:
+                    self._state.alice_bases = [self.rng.choice(list(Basis)) for _ in range(n)]
+                self._state.step = Step.ALICE_BASES
+            case Step.ALICE_BASES:
+                self._state.photons = [
+                    encode_photon(bit, basis)
+                    for bit, basis in zip(self._state.alice_bits, self._state.alice_bases)
+                ]
+                self._state.step = Step.ENCODE
+            case Step.ENCODE:
+                self._state.eve_bases = []
+                self._state.eve_bits = []
+                self._state.sent_photons = []
+                for i, photon in enumerate(self._state.photons):
+                    if should_intercept(self.config, self.rng):
+                        if self.config.manual_eve_bases and i < len(self.config.manual_eve_bases):
+                            e_basis = self.config.manual_eve_bases[i]
+                        else:
+                            e_basis = self.rng.choice(list(Basis))
+                        e_bit, collapsed = eve_intercept(photon, e_basis, self.rng)
+                        self._state.eve_bases.append(e_basis)
+                        self._state.eve_bits.append(e_bit)
+                        transmitted = collapsed
+                    else:
+                        self._state.eve_bases.append(None)
+                        self._state.eve_bits.append(None)
+                        transmitted = photon
+                    transmitted = apply_noise(transmitted, self.config.noise_rate, self.rng)
+                    self._state.sent_photons.append(transmitted)
+                self._state.step = Step.TRANSMIT
+            case Step.TRANSMIT:
+                if self.config.manual_bob_bases is not None:
+                    self._state.bob_bases = list(self.config.manual_bob_bases)
+                else:
+                    self._state.bob_bases = [self.rng.choice(list(Basis)) for _ in range(n)]
+                self._state.step = Step.BOB_BASES
+            case Step.BOB_BASES:
+                self._state.bob_bits = []
+                for photon, basis in zip(self._state.sent_photons, self._state.bob_bases):
+                    bit, _ = measure_photon(photon, basis, self.rng)
+                    self._state.bob_bits.append(bit)
+                self._state.step = Step.BOB_MEASURE
+            case Step.BOB_MEASURE:
+                self._state.sifted_indices = sifting(self._state.alice_bases, self._state.bob_bases)
+                self._state.step = Step.SIFTING
+            case Step.SIFTING:
+                self._state.sample_indices = sample_qber(
+                    self._state.sifted_indices, self.config.sample_ratio, self.rng
+                )
+                self._state.qber = estimate_qber(
+                    self._state.alice_bits, self._state.bob_bits, self._state.sample_indices
+                )
+                self._state.expected_qber = calculate_expected_qber(self.config)
+                self._state.step = Step.QBER
+            case Step.QBER:
+                if self._state.qber is not None and self._state.qber <= self.config.qber_threshold:
+                    self._state.key_accepted = True
+                    self._state.final_key = get_final_key(
+                        self._state.alice_bits,
+                        self._state.sifted_indices,
+                        self._state.sample_indices
+                    )
+                else:
+                    self._state.key_accepted = False
+                    self._state.final_key = []
+                self._state.step = Step.RESULT
+    
+    def run_to_end(self):
+        while self._state.step != Step.RESULT:
+            self.next_step()
