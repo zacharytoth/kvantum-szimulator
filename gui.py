@@ -1,7 +1,6 @@
 import customtkinter as ctk
 from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases
 import random
-import tkinter as tk
 
 def basis_to_symbol(basis) -> str:
     if basis is None:
@@ -19,56 +18,6 @@ def photon_to_symbol(photon) -> str:
         135: "↖"
     }
     return symbols.get(angle, "?")
-
-class CTkTooltip:
-    def __init__(self, widget, get_text_func):
-        self.widget = widget
-        self.get_text_func = get_text_func
-        self.tip_window = None
-
-        self.widget.bind("<Enter>", self.show_tip)
-        self.widget.bind("<Leave>", self.hide_tip)
-        self.widget.bind("<Motion>", self.move_tip)
-
-    def show_tip(self, event=None):
-        text = self.get_text_func()
-        if not text:
-            return
-        if self.tip_window or not text:
-            return
-
-        x = self.widget.winfo_rootx() + 20
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
-
-        self.tip_window = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True)
-        tw.wm_geometry(f"+{x}+{y}")
-        tw.attributes("-topmost", True)
-
-        label = tk.Label(
-            tw,
-            text=text,
-            justify="left",
-            background="#c0392b",
-            foreground="white",
-            relief="solid",
-            borderwidth=1,
-            font=("Arial", 10, "bold"),
-            padx=6,
-            pady=3
-        )
-        label.pack(ipadx=1)
-
-    def move_tip(self, event):
-        if self.tip_window:
-            x = event.x_root + 15
-            y = event.y_root + 10
-            self.tip_window.wm_geometry(f"+{x}+{y}")
-
-    def hide_tip(self, event=None):
-        if self.tip_window:
-            self.tip_window.destroy()
-            self.tip_window = None
 
 
 class BB84App(ctk.CTk):
@@ -305,11 +254,8 @@ class BB84App(ctk.CTk):
             "var": var,
             "entry": entry,
             "parser": parser,
-            "alphabet": alphabet,
-            "error": ""
+            "alphabet": alphabet
         }
-
-        CTkTooltip(entry, lambda: field_data["error"])
 
         var.trace_add("write", lambda *_: self._revalidate())
         self.fields[key] = field_data
@@ -359,17 +305,14 @@ class BB84App(ctk.CTk):
 
             if n is None:
                 f["entry"].configure(border_color="red")
-                f["error"] = "A bitek száma 8 és 32 közötti egész szám kell legyen!"
                 ok = False
                 continue
 
             try:
                 f["parser"](val, n)
                 f["entry"].configure(border_color=self.default_border)
-                f["error"] = ""
-            except ValueError as e:
+            except ValueError:
                 f["entry"].configure(border_color="red")
-                f["error"] = str(e)
                 ok = False
 
         state_str = "normal" if ok else "disabled"
