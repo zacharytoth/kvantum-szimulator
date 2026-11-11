@@ -20,7 +20,6 @@ def photon_to_symbol(photon) -> str:
     }
     return symbols.get(angle, "?")
 
-
 class CTkTooltip:
     """Lebegő tooltip hibaüzenetek és információk megjelenítésére."""
     def __init__(self, widget, get_text_func):
@@ -79,7 +78,6 @@ class BB84App(ctk.CTk):
         self.title("BB84 Kvantum-kriptográfiai Szimulátor")
         self.geometry("1100x700")
 
-        # Alapértelmezett keretszín kimentése a visszaállításhoz
         self.default_border = ctk.ThemeManager.theme["CTkEntry"]["border_color"]
 
         self.sim = BB84Simulation(SimConfig(n_bits=16))
@@ -89,7 +87,6 @@ class BB84App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Bal oldali panel: Beállítások
         self.param_frame = ctk.CTkFrame(self, width=260)
         self.param_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
@@ -112,43 +109,32 @@ class BB84App(ctk.CTk):
         self.bits = ctk.CTkEntry(self.param_frame, textvariable=self.bits_var)
         self.bits.pack(fill="x", padx=10, pady=5)
 
-        # Csatornazaj csúszka
         self.lbl_noise = ctk.CTkLabel(self.param_frame, text="Csatornazaj: 0.00", anchor="w")
         self.lbl_noise.pack(fill="x", padx=10, pady=(10, 0))
         self.noise = ctk.CTkSlider(self.param_frame, from_=0.0, to=0.5, number_of_steps=50, command=self._on_noise_change)
         self.noise.set(0.0)
         self.noise.pack(fill="x", padx=10, pady=5)
 
-        # Eve lehallgatás
-        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._refresh_layout)
-        self.eve.pack(fill="x", padx=10, pady=(10, 15))
-        #Eve lehallgatas
-        #self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._on_eve_toggle)
-        #self.eve.pack(fill="x", padx=10, pady=(10,15))
-        #self.lbl_eve_ratio = ctk.CTkLabel(self.param_frame, text="Eve arány 1.00", anchor="w")
-        #self.lbl_eve_ratio.pack(fill="x", padx=10, pady=(5,0))
-        #self.slider_eve_ratio = ctk.CTkSlider(self.param_frame, from_=0.0, to=1.0, number_of_steps=20, command=self._on_eve_ratio_change)
-        #self.slider_eve_ratio.set(1.0)
-        #self.slider_eve_ratio.pack(fill="x", padx=10, pady=5)
+        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._on_eve_toggle)
+        self.eve.pack(fill="x", padx=10, pady=(10,15))
+        self.lbl_eve_ratio = ctk.CTkLabel(self.param_frame, text="Eve arány 1.00", anchor="w")
+        self.slider_eve_ratio = ctk.CTkSlider(self.param_frame, from_=0.0, to=1.0, number_of_steps=20, command=self._on_eve_ratio_change)
+        self.slider_eve_ratio.set(1.0)
 
-        # Manuális beviteli mezők
         self._make_field("alice_bits",  "Alice bitjei (0/1):",   parse_bits,  "01")
         self._make_field("alice_bases", "Alice bázisai (+/x):",  parse_bases, "+x")
         self._make_field("bob_bases",   "Bob bázisai (+/x):",    parse_bases, "+x")
         self._make_field("eve_bases",   "Eve bázisai (+/x):",    parse_bases, "+x")
 
-        # Alkalmaz gomb
         self.btn_apply = ctk.CTkButton(self.param_frame, text="Alkalmaz", command=self._on_apply_config)
         self.btn_apply.pack(fill="x", padx=10, pady=20)
 
-        # Jobb oldali panel
         self.right_frame = ctk.CTkFrame(self)
         self.right_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
 
         self.step_label = ctk.CTkLabel(self.right_frame, text="Lépés: 0/9 - SETUP", font=("Arial", 16, "bold"))
         self.step_label.pack(pady=10)
 
-        # Táblázat
         self.table_frame = ctk.CTkScrollableFrame(self.right_frame, orientation="horizontal", height=240)
         self.table_frame.pack(fill="x", padx=10, pady=5)
 
@@ -157,7 +143,6 @@ class BB84App(ctk.CTk):
         self.info_label = ctk.CTkLabel(self.info_card, text="A szimuláció indításra kész.", wraplength=600)
         self.info_label.pack(padx=10, pady=10)
 
-        # Vezérlőgombok
         self.control_frame = ctk.CTkFrame(self.right_frame)
         self.control_frame.pack(fill="x", padx=10, pady=10)
 
@@ -221,7 +206,6 @@ class BB84App(ctk.CTk):
         eve = bool(self.eve.get())
         eve_ratio = float(self.slider_eve_ratio.get())
 
-        #sc = SimConfig(n_bits=n, eve_present=eve, eve_ratio=eve_ratio, noise_rate=noise)
         manual_alice_bits = None
         manual_alice_bases = None
         manual_bob_bases = None
@@ -281,7 +265,7 @@ class BB84App(ctk.CTk):
             for c, val in enumerate(values):
                 bgcolor = ("gray85", "gray25")
 
-                eve_intercepted = (self.sim.config.eve_ratio and bool(state.eve_bases) and c < len(state.alice_bases) and state.alice_bases[c] is not None)
+                eve_intercepted = (self.sim.config.eve_ratio and bool(state.eve_bases) and c < len(state.eve_bases) and state.eve_bases[c] is not None)
                 photon_modified = (eve_intercepted and bool(state.alice_bases) and c<len(state.alice_bases) and state.alice_bases[c]!= state.eve_bases[c])
 
                 if photon_modified and "Eve" in label_text and str(val)!="-":
@@ -302,8 +286,8 @@ class BB84App(ctk.CTk):
         else:
             self.lbl_eve_ratio.pack_forget()
             self.slider_eve_ratio.pack_forget()
-                cell = ctk.CTkLabel(self.table_frame, text=str(val), width=32, height=26, fg_color=("gray85", "gray25"), corner_radius=4)
-                cell.grid(row=r, column=c + 1, padx=2, pady=2)
+
+        self._refresh_layout()
 
     def _make_field(self, key, label, parser, alphabet):
         frame = ctk.CTkFrame(self.param_frame, fg_color="transparent")
@@ -315,7 +299,6 @@ class BB84App(ctk.CTk):
         entry = ctk.CTkEntry(row, textvariable=var)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
 
-        # 🎲 gomb a specifikáció szerint
         btn_dice = ctk.CTkButton(row, text="🎲", width=36, command=lambda: self._randomize(key))
         btn_dice.pack(side="left")
 
@@ -328,7 +311,6 @@ class BB84App(ctk.CTk):
             "error": ""
         }
 
-        # Tooltip bekötése a mezőre
         CTkTooltip(entry, lambda: field_data["error"])
 
         var.trace_add("write", lambda *_: self._revalidate())
@@ -393,7 +375,6 @@ class BB84App(ctk.CTk):
                 f["error"] = str(e)
                 ok = False
 
-        # Ha hibás a bevitel, letiltjuk a végrehajtó gombokat (Kész, ha: futtatás nem indul el)
         state_str = "normal" if ok else "disabled"
         self.btn_apply.configure(state=state_str)
         self.btn_next.configure(state=state_str)
