@@ -19,6 +19,49 @@ def photon_to_symbol(photon) -> str:
     }
     return symbols.get(angle, "?")
 
+STEP_DESCRIPTIONS = {
+    Step.SETUP:
+        "A szimuláció előkészítési fázisa. Állítsd be a bitek számát, a csatornazajt és Eve jelenlétét, "
+        "majd kattints az Alkalmaz gombra vagy léptess előre az indításhoz."
+    ,
+    Step.ALICE_BITS:
+        "Alice előállítja az N darab nyers véletlen klasszikus bitet. "
+        "Ezek alkotják a leendő titkos kulcs alapját, és Alice privát memóriájában maradnak."
+    ,
+    Step.ALICE_BASES:
+        "Alice minden egyes bithez véletlenszerűen kiválaszt egy polarizációs bázist (+ vagy x). "
+        "Ezt a bázisválasztást egyelőre nem osztja meg senkivel."
+    ,
+    Step.ENCODE: (
+        "🔒 Kvantumállapot (Fotonok generálása)\n\n"
+        "Alice a biteket és bázisokat fotonok polarizációs állapotává kódolja: "
+        "+ bázisnál 0→→, 1→↑; x bázisnál 0→↗, 1→↖. A fotonok készen állnak az átvitelre."
+    ),
+    Step.TRANSMIT:
+        "A fotonok áthaladnak a kvantumcsatornán, kitéve a csatornazajnak. "
+        "Ha Eve aktív, elfogja és megméri a fotonokat, megváltoztatva az állapotukat a továbbküldés előtt."
+    ,
+    Step.BOB_BASES:
+        "Bob függetlenül és véletlenszerűen választ mérési bázist (+ vagy x) minden egyes beérkező fotonhoz. "
+        "Nem tudja előre, hogy Alice melyik pozícióban milyen bázist használt."
+    ,
+    Step.BOB_MEASURE:
+        "Bob elvégzi a projektív kvantummérést a saját bázisaiban. "
+        "Egyező bázisnál az eredmény determinisztikus, míg eltérő bázisnál 50% eséllyel hibás bitet kap."
+    ,
+    Step.SIFTING:
+        "Alice és Bob nyilvánosan megosztják a mérési bázisaikat, de a bitek titkosak maradnak. "
+        "Az eltérő bázisú pozíciókat kidobják; a megmaradt bitek képezik a szitált (sifted) kulcsot."
+    ,
+    Step.QBER:
+        "A felek nyilvánosan feláldoznak és összehasonlítanak egy mintát a szitált bitekből a hibaarány (QBER) ellenőrzésére. "
+        "A tesztelt biteket ezután véglegesen törlik a kulcsból."
+    ,
+    Step.RESULT:
+        "Ha a mért QBER meghaladja a küszöbértéket, riasztás lép életbe és a felek eldobják a kulcsot. "
+        "Megfelelően alacsony hiba esetén a megmaradt bitek adják a végleges, biztonságos titkos kulcsot."
+    ,
+}
 
 class BB84App(ctk.CTk):
     def __init__(self):
@@ -88,7 +131,7 @@ class BB84App(ctk.CTk):
 
         self.info_card = ctk.CTkFrame(self.right_frame)
         self.info_card.pack(fill="both", expand=True, padx=10, pady=10)
-        self.info_label = ctk.CTkLabel(self.info_card, text="A szimuláció indításra kész.", wraplength=600)
+        self.info_label = ctk.CTkLabel(self.info_card, text="", wraplength=600)
         self.info_label.pack(padx=10, pady=10)
 
         self.control_frame = ctk.CTkFrame(self.right_frame)
@@ -132,6 +175,8 @@ class BB84App(ctk.CTk):
     def update_ui(self):
         state = self.sim.state
         self.step_label.configure(text=f"Lépés: {int(state.step)}/9 - {state.step.name}")
+        step = STEP_DESCRIPTIONS.get(state.step, "Ismeretlen lépés")
+        self.info_label.configure(text=step)
         self._render_table()
 
     def _on_noise_change(self, value):
