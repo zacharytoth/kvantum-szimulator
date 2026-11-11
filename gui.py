@@ -331,7 +331,7 @@ class BB84App(ctk.CTk):
 
         btn_dice = ctk.CTkButton(
             row,
-            text="🎲",
+            text="⚄",
             width=38,
             height=36,
             font=("Segoe UI Emoji", 16),
