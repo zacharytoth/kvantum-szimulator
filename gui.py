@@ -122,6 +122,14 @@ class BB84App(ctk.CTk):
         # Eve lehallgatás
         self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._refresh_layout)
         self.eve.pack(fill="x", padx=10, pady=(10, 15))
+        #Eve lehallgatas
+        #self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._on_eve_toggle)
+        #self.eve.pack(fill="x", padx=10, pady=(10,15))
+        #self.lbl_eve_ratio = ctk.CTkLabel(self.param_frame, text="Eve arány 1.00", anchor="w")
+        #self.lbl_eve_ratio.pack(fill="x", padx=10, pady=(5,0))
+        #self.slider_eve_ratio = ctk.CTkSlider(self.param_frame, from_=0.0, to=1.0, number_of_steps=20, command=self._on_eve_ratio_change)
+        #self.slider_eve_ratio.set(1.0)
+        #self.slider_eve_ratio.pack(fill="x", padx=10, pady=5)
 
         # Manuális beviteli mezők
         self._make_field("alice_bits",  "Alice bitjei (0/1):",   parse_bits,  "01")
@@ -211,7 +219,9 @@ class BB84App(ctk.CTk):
 
         noise = float(self.noise.get())
         eve = bool(self.eve.get())
+        eve_ratio = float(self.slider_eve_ratio.get())
 
+        #sc = SimConfig(n_bits=n, eve_present=eve, eve_ratio=eve_ratio, noise_rate=noise)
         manual_alice_bits = None
         manual_alice_bases = None
         manual_bob_bases = None
@@ -228,6 +238,7 @@ class BB84App(ctk.CTk):
             n_bits=n,
             eve_present=eve,
             noise_rate=noise,
+            eve_ratio=eve_ratio,
             manual_alice_bits=manual_alice_bits,
             manual_alice_bases=manual_alice_bases,
             manual_bob_bases=manual_bob_bases,
@@ -268,6 +279,29 @@ class BB84App(ctk.CTk):
             header.grid(row=r, column=0, padx=(5, 10), pady=2, sticky="w")
 
             for c, val in enumerate(values):
+                bgcolor = ("gray85", "gray25")
+
+                eve_intercepted = (self.sim.config.eve_ratio and bool(state.eve_bases) and c < len(state.alice_bases) and state.alice_bases[c] is not None)
+                photon_modified = (eve_intercepted and bool(state.alice_bases) and c<len(state.alice_bases) and state.alice_bases[c]!= state.eve_bases[c])
+
+                if photon_modified and "Eve" in label_text and str(val)!="-":
+                    bgcolor = "#6A0DAD"
+                elif eve_intercepted and "Eve" in label_text and str(val)!="-":
+                    bgcolor = "#3A3A3C"
+
+                cell = ctk.CTkLabel(self.table_frame, text=str(val), width=32, height=26, fg_color=bgcolor, corner_radius=4)
+                cell.grid(row = r, column=c + 1, padx=2, pady=2)
+
+    def _on_eve_ratio_change(self, value):
+        self.lbl_eve_ratio.configure(text=f"Eve arány: {value:.2f}")
+
+    def _on_eve_toggle(self):
+        if self.eve.get() == 1:
+            self.lbl_eve_ratio.pack(fill="x", padx=10, pady=(5,0), before=self.btn_apply)
+            self.slider_eve_ratio.pack(fill="x", padx=10, pady=5, before=self.btn_apply)
+        else:
+            self.lbl_eve_ratio.pack_forget()
+            self.slider_eve_ratio.pack_forget()
                 cell = ctk.CTkLabel(self.table_frame, text=str(val), width=32, height=26, fg_color=("gray85", "gray25"), corner_radius=4)
                 cell.grid(row=r, column=c + 1, padx=2, pady=2)
 
