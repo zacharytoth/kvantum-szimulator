@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases
+from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases, estimate_qber
 import random
 
 def basis_to_symbol(basis) -> str:
@@ -66,9 +66,11 @@ FONT_TITLE = ("Segoe UI", 18, "bold")
 FONT_LABEL = ("Segoe UI", 15, "bold")
 FONT_ENTRY = ("Consolas", 15)
 FONT_BUTTON = ("Segoe UI", 15, "bold")
-FONT_INFO = ("Segoe UI", 18)
+FONT_INFO = ("Segoe UI", 16)
+FONT_SUBINFO = ("Segoe UI", 14, "italic")
 FONT_TABLE_HEADER = ("Segoe UI", 14, "bold")
 FONT_TABLE_CELL = ("Consolas", 15, "bold")
+FONT_KEY_VALUE = ("Consolas", 17, "bold")
 
 class BB84App(ctk.CTk):
     def __init__(self):
@@ -81,6 +83,7 @@ class BB84App(ctk.CTk):
 
         self.sim = BB84Simulation(SimConfig(n_bits=16))
         self.fields = {}
+        self._config_dirty = False
 
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
@@ -107,7 +110,7 @@ class BB84App(ctk.CTk):
         self.lbl_bits.pack(fill="x", padx=14, pady=(8, 2))
 
         self.bits_var = ctk.StringVar(value="16")
-        self.bits_var.trace_add("write", lambda *_: self._revalidate())
+        self.bits_var.trace_add("write", lambda *_: self._on_param_edited())
         self.bits = ctk.CTkEntry(
             self.param_frame,
             textvariable=self.bits_var,
@@ -147,13 +150,13 @@ class BB84App(ctk.CTk):
         self.right_frame.grid(row=0, column=1, padx=(8, 14), pady=14, sticky="nsew")
 
         self.step_label = ctk.CTkLabel(self.right_frame, text="Lépés: 0/9 - SETUP", font=FONT_TITLE)
-        self.step_label.pack(pady=(16, 10))
+        self.step_label.pack(pady=(12, 6))
 
-        self.table_frame = ctk.CTkScrollableFrame(self.right_frame, orientation="horizontal", height=250, corner_radius=10)
-        self.table_frame.pack(fill="x", padx=14, pady=6)
+        self.table_frame = ctk.CTkScrollableFrame(self.right_frame, orientation="horizontal", height=240, corner_radius=10)
+        self.table_frame.pack(fill="x", padx=14, pady=4)
 
         self.control_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        self.control_frame.pack(side="bottom", fill="x", padx=14, pady=(4, 14))
+        self.control_frame.pack(side="bottom", fill="x", padx=14, pady=(4, 12))
 
         self.btn_reset = ctk.CTkButton(self.control_frame, text="Reset", font=FONT_BUTTON, height=40, corner_radius=8, command=self._on_reset)
         self.btn_reset.pack(side="left", padx=6, pady=4, expand=True, fill="x")
@@ -168,21 +171,26 @@ class BB84App(ctk.CTk):
         self.btn_run_to_end.pack(side="left", padx=6, pady=4, expand=True, fill="x")
 
         self.info_card = ctk.CTkFrame(self.right_frame, corner_radius=10)
-        self.info_card.pack(fill="both", expand=True, padx=14, pady=10)
+        self.info_card.pack(fill="both", expand=True, padx=14, pady=8)
         self.info_label = ctk.CTkLabel(
             self.info_card,
             text="",
-            wraplength=680,
+            wraplength=720,
             font=FONT_INFO,
             justify="center"
         )
-        self.info_label.pack(padx=20, pady=20)
+        self.info_label.pack(padx=16, pady=(12, 6))
 
         self.stats_frame = ctk.CTkFrame(self.info_card, fg_color="transparent")
-        self.stats_frame.pack(fill="both", expand=True)
+        self.stats_frame.pack(fill="both", expand=True, padx=14, pady=(0, 10))
 
         self.update_ui()
         self._refresh_layout()
+
+    def _on_param_edited(self):
+        self._config_dirty = True
+        if self._revalidate() and self.sim.step != Step.SETUP:
+            self._on_apply_config()
 
     def _on_reset(self):
         self.sim.reset()
@@ -195,12 +203,16 @@ class BB84App(ctk.CTk):
     def _on_next(self):
         if not self._revalidate():
             return
+        if self._config_dirty:
+            self._on_apply_config()
         self.sim.next_step()
         self.update_ui()
 
     def _on_run_to_end(self):
         if not self._revalidate():
             return
+        if self._config_dirty:
+            self._on_apply_config()
         self.sim.run_to_end()
         self.update_ui()
 
@@ -208,12 +220,16 @@ class BB84App(ctk.CTk):
         state = self.sim.state
         self.step_label.configure(text=f"Lépés: {int(state.step)}/9 - {state.step.name}")
         step = STEP_DESCRIPTIONS.get(state.step, "Ismeretlen lépés")
+        if state.step == Step.SIFTING and not state.sifted_indices:
+            step += "\nEgyetlen bázis sem egyezett (0 szitált bit)!"
         self.info_label.configure(text=step)
         self._render_table()
         self._render_info_card()
+        self._revalidate()
 
     def _on_noise_change(self, value):
         self.lbl_noise.configure(text=f"Csatornazaj: {value:.2f}")
+        self._on_param_edited()
 
     def _on_apply_config(self):
         if not self._revalidate():
@@ -225,7 +241,8 @@ class BB84App(ctk.CTk):
         except ValueError:
             n = 16
 
-        self.bits_var.set(str(n))
+        if self.bits_var.get() != str(n):
+            self.bits_var.set(str(n))
 
         noise = float(self.noise.get())
         eve = bool(self.eve.get())
@@ -253,6 +270,7 @@ class BB84App(ctk.CTk):
             manual_bob_bases=manual_bob_bases,
             manual_eve_bases=manual_eve_bases
         )
+        self._config_dirty = False
         self.sim = BB84Simulation(sc)
         self.update_ui()
 
@@ -280,12 +298,12 @@ class BB84App(ctk.CTk):
         ])
 
         row_count = len(rows)
-        height = min(row_count * 34 + 45, 330)
+        height = min(row_count * 34 + 35, 310)
         self.table_frame.configure(height=height)
 
         for r, (label_text, values) in enumerate(rows):
             header = ctk.CTkLabel(self.table_frame, text=label_text, width=110, anchor="w", font=FONT_TABLE_HEADER)
-            header.grid(row=r, column=0, padx=(6, 12), pady=3, sticky="w")
+            header.grid(row=r, column=0, padx=(6, 12), pady=2, sticky="w")
 
             for c, val in enumerate(values):
                 bgcolor = ("gray85", "gray25")
@@ -311,6 +329,7 @@ class BB84App(ctk.CTk):
 
     def _on_eve_ratio_change(self, value):
         self.lbl_eve_ratio.configure(text=f"Eve arány: {value:.2f}")
+        self._on_param_edited()
 
     def _on_eve_toggle(self):
         if self.eve.get() == 1:
@@ -321,6 +340,7 @@ class BB84App(ctk.CTk):
             self.slider_eve_ratio.pack_forget()
 
         self._refresh_layout()
+        self._on_param_edited()
 
     def _make_field(self, key, label, parser, alphabet):
         frame = ctk.CTkFrame(self.param_frame, fg_color="transparent")
@@ -337,7 +357,7 @@ class BB84App(ctk.CTk):
             text="⚄",
             width=38,
             height=36,
-            font=("Segoe UI Emoji", 16),
+            font=FONT_BUTTON,
             corner_radius=8,
             command=lambda: self._randomize(key)
         )
@@ -351,7 +371,7 @@ class BB84App(ctk.CTk):
             "alphabet": alphabet
         }
 
-        var.trace_add("write", lambda *_: self._revalidate())
+        var.trace_add("write", lambda *_: self._on_param_edited())
         self.fields[key] = field_data
 
     def _refresh_layout(self, *args):
@@ -367,22 +387,19 @@ class BB84App(ctk.CTk):
 
     def _on_mode_change(self, mode_value=None):
         self._refresh_layout()
+        self._on_param_edited()
 
     def _randomize(self, key):
         try:
             n = int(self.bits.get())
+            if not (8 <= n <= 32):
+                n = 16
         except ValueError:
             n = 16
         f = self.fields[key]
         f["var"].set("".join(random.choice(f["alphabet"]) for _ in range(n)))
 
     def _revalidate(self) -> bool:
-        if self.mode.get() != "Manuális":
-            self.btn_apply.configure(state="normal")
-            self.btn_next.configure(state="normal")
-            self.btn_run_to_end.configure(state="normal")
-            return True
-
         try:
             n = int(self.bits.get())
             if not (8 <= n <= 32):
@@ -390,29 +407,38 @@ class BB84App(ctk.CTk):
         except ValueError:
             n = None
 
-        ok = True
-        keys = ["alice_bits", "alice_bases", "bob_bases"] + (["eve_bases"] if self.eve.get() else [])
+        if n is None:
+            self.bits.configure(border_color="red")
+            ok = False
+        else:
+            self.bits.configure(border_color=self.default_border)
+            ok = True
 
-        for k in keys:
-            f = self.fields[k]
-            val = f["var"].get()
+        if self.mode.get() == "Manuális":
+            keys = ["alice_bits", "alice_bases", "bob_bases"] + (["eve_bases"] if self.eve.get() else [])
+            for k in keys:
+                f = self.fields[k]
+                val = f["var"].get()
 
-            if n is None:
-                f["entry"].configure(border_color="red")
-                ok = False
-                continue
+                if n is None:
+                    f["entry"].configure(border_color="red")
+                    ok = False
+                    continue
 
-            try:
-                f["parser"](val, n)
-                f["entry"].configure(border_color=self.default_border)
-            except ValueError:
-                f["entry"].configure(border_color="red")
-                ok = False
+                try:
+                    f["parser"](val, n)
+                    f["entry"].configure(border_color=self.default_border)
+                except ValueError:
+                    f["entry"].configure(border_color="red")
+                    ok = False
 
-        state_str = "normal" if ok else "disabled"
-        self.btn_apply.configure(state=state_str)
-        self.btn_next.configure(state=state_str)
-        self.btn_run_to_end.configure(state=state_str)
+        at_start = self.sim.step == Step.SETUP
+        at_end = self.sim.step == Step.RESULT
+
+        self.btn_apply.configure(state="normal" if ok else "disabled")
+        self.btn_prev.configure(state="disabled" if at_start else "normal")
+        self.btn_next.configure(state="normal" if (ok and not at_end) else "disabled")
+        self.btn_run_to_end.configure(state="normal" if (ok and not at_end) else "disabled")
 
         return ok
 
@@ -426,42 +452,96 @@ class BB84App(ctk.CTk):
         if getattr(state, "qber", None) is None:
             return
 
-        qber = state.qber
         threshold = getattr(config, "qber_threshold", 0.11)
-        expected = getattr(state, "expected_qber", 0.0)
+        sifted = state.sifted_indices
 
-        is_safe = qber <= threshold
-        if is_safe:
-           bgcolor = "#2E7D32"
-           lbl_text = "Biztonságos! A kulcs el lett fogadva!"
-        else:
-            bgcolor = "#C62828"
-            lbl_text = "VESZÉLY! Magas lehallgatásra utaló jelek miatt a kulcs el lett dobva!"
+        qber = estimate_qber(state.alice_bits, state.bob_bits, sifted) if sifted else 0.0
+        has_enough_bits = bool(sifted) and len(sifted) > len(state.sample_indices)
+        is_safe = has_enough_bits and qber <= threshold
+        bgcolor = "#2E7D32" if is_safe else "#C62828"
 
-        lbl_banner = ctk.CTkLabel(self.stats_frame, fg_color=bgcolor, text=lbl_text, text_color="white", font=("Arial", 14, "bold"), corner_radius=6)
-        lbl_banner.pack(fill="x", padx=10, pady=(10,10), ipady=5)
+        qber_card = ctk.CTkFrame(self.stats_frame, fg_color=("gray88", "gray20"), corner_radius=8)
+        qber_card.pack(fill="x", padx=6, pady=(2, 6))
 
-        lbl_qber = ctk.CTkLabel(self.stats_frame, text=f"Mért QBER: {qber*100:.1f}% (Küszöb: {threshold*100:.1f}%)", font=("Arial", 12, "bold"))
-        lbl_qber.pack(fill="x", padx=10)
+        qber_header = ctk.CTkFrame(qber_card, fg_color="transparent")
+        qber_header.pack(fill="x", padx=12, pady=(8, 4))
 
-        pb_container = ctk.CTkFrame(self.stats_frame, fg_color="transparent")
-        pb_container.pack(fill="x", padx=10, pady=(2,10))
+        ctk.CTkLabel(
+            qber_header,
+            text=f"Mért QBER: {qber*100:.1f}%",
+            font=FONT_LABEL,
+            anchor="w"
+        ).pack(side="left")
 
-        pb = ctk.CTkProgressBar(pb_container, height=12, progress_color=bgcolor)
+        ctk.CTkLabel(
+            qber_header,
+            text=f"Küszöbérték: {threshold*100:.1f}%",
+            font=FONT_TABLE_HEADER,
+            text_color=("gray35", "gray70"),
+            anchor="e"
+        ).pack(side="right")
+
+        pb_container = ctk.CTkFrame(qber_card, fg_color="transparent")
+        pb_container.pack(fill="x", padx=12, pady=(2, 8))
+
+        pb = ctk.CTkProgressBar(pb_container, height=14, corner_radius=7, progress_color=bgcolor)
         pb.pack(fill="x")
         pb.set(min(qber, 1.0))
 
-        threshold_marker = ctk.CTkFrame(pb_container, width=2, height=16, fg_color="white", corner_radius=0)
+        threshold_marker = ctk.CTkFrame(pb_container, width=3, height=18, fg_color="white", corner_radius=0)
         threshold_marker.place(relx=threshold, rely=0.5, anchor="center")
 
         if config.eve_present:
-            test_bits=len(state.sifted_indices) // 2 if hasattr(state, "sifted_indices") and state.sifted_indices else 1
-            p_hidden = (1-expected) ** max(1, test_bits)
+            intercepted_sifted = sum(
+                1 for i in sifted
+                if i < len(state.eve_bases) and state.eve_bases[i] is not None
+            )
+            p_hidden = (0.75) ** intercepted_sifted
 
-            lbl_eve_sneaky = ctk.CTkLabel(self.stats_frame, text=f"Eve rejtve maradásának esélye: {p_hidden*100:.2f}%", text_color="#FFB74D", font=("Arial", 12, "italic"))
-            lbl_eve_sneaky.pack(fill="x", padx=10, pady=5)
+            lbl_eve_sneaky = ctk.CTkLabel(
+                qber_card,
+                text=f"Eve rejtve maradásának esélye: {p_hidden*100:.2f}%",
+                text_color="#FFB74D",
+                font=FONT_SUBINFO
+            )
+            lbl_eve_sneaky.pack(fill="x", padx=12, pady=(0, 8))
 
-        if  is_safe and getattr(state, "shared_key", None):
-            key = "".join(map(str, state.shared_key))
-            lbl_key = ctk.CTkLabel(self.stats_frame, text=f"Végső közös kulcs: {key}", font=("Courier New", 18, "bold"), text_color="#4FC3F7")
-            lbl_key.pack(pady=15)
+        if state.step == Step.RESULT:
+            if is_safe:
+                lbl_text = "Biztonságos! A kulcs el lett fogadva!"
+            elif not has_enough_bits:
+                lbl_text = "Nem maradt elég szitált bit – a kulcs el lett dobva!"
+            else:
+                lbl_text = "VESZÉLY! Magas lehallgatásra utaló jelek miatt a kulcs el lett dobva!"
+
+            lbl_banner = ctk.CTkLabel(
+                self.stats_frame,
+                fg_color=bgcolor,
+                text=lbl_text,
+                text_color="white",
+                font=FONT_BUTTON,
+                corner_radius=8
+            )
+            lbl_banner.pack(fill="x", padx=6, pady=(2, 6), ipady=6)
+
+            if is_safe and getattr(state, "final_key", None):
+                key_card = ctk.CTkFrame(self.stats_frame, fg_color=("gray88", "gray20"), corner_radius=8)
+                key_card.pack(fill="x", padx=6, pady=(2, 4))
+
+                ctk.CTkLabel(
+                    key_card,
+                    text="Végső közös kulcs:",
+                    font=FONT_LABEL,
+                    anchor="w"
+                ).pack(side="left", padx=(12, 8), pady=8)
+
+                key_str = " ".join(map(str, state.final_key))
+                ctk.CTkLabel(
+                    key_card,
+                    text=key_str,
+                    font=FONT_KEY_VALUE,
+                    fg_color=("gray80", "gray28"),
+                    corner_radius=6,
+                    padx=10,
+                    pady=4
+                ).pack(side="left", padx=(0, 12), pady=8)
