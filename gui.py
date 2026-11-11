@@ -1,7 +1,9 @@
 import customtkinter as ctk
-from bb84_core import BB84Simulation,SimConfig, Step
+from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases
+import random
+import tkinter as tk
 
-def basis_to_symbol(basis)-> str:
+def basis_to_symbol(basis) -> str:
     if basis is None:
         return "-"
     return "+" if basis.name == "RECTILINEAR" else "x"
@@ -10,7 +12,7 @@ def photon_to_symbol(photon) -> str:
     if photon is None:
         return "-"
     angle = round(photon.angle % 180)
-    symbols={
+    symbols = {
         0: "→",
         45: "↗",
         90: "↑",
@@ -18,48 +20,127 @@ def photon_to_symbol(photon) -> str:
     }
     return symbols.get(angle, "?")
 
+
+class CTkTooltip:
+    """Lebegő tooltip hibaüzenetek és információk megjelenítésére."""
+    def __init__(self, widget, get_text_func):
+        self.widget = widget
+        self.get_text_func = get_text_func
+        self.tip_window = None
+
+        self.widget.bind("<Enter>", self.show_tip)
+        self.widget.bind("<Leave>", self.hide_tip)
+        self.widget.bind("<Motion>", self.move_tip)
+
+    def show_tip(self, event=None):
+        text = self.get_text_func()
+        if not text:
+            return
+        if self.tip_window or not text:
+            return
+
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tw.attributes("-topmost", True)
+
+        label = tk.Label(
+            tw,
+            text=text,
+            justify="left",
+            background="#c0392b",
+            foreground="white",
+            relief="solid",
+            borderwidth=1,
+            font=("Arial", 10, "bold"),
+            padx=6,
+            pady=3
+        )
+        label.pack(ipadx=1)
+
+    def move_tip(self, event):
+        if self.tip_window:
+            x = event.x_root + 15
+            y = event.y_root + 10
+            self.tip_window.wm_geometry(f"+{x}+{y}")
+
+    def hide_tip(self, event=None):
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
+
+
 class BB84App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("BB84 Kvantum-kriptográfiai Szimulátor")
         self.geometry("1100x700")
+
+        # Alapértelmezett keretszín kimentése a visszaállításhoz
+        self.default_border = ctk.ThemeManager.theme["CTkEntry"]["border_color"]
+
         self.sim = BB84Simulation(SimConfig(n_bits=16))
+        self.fields = {}
+
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0 , weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        self.param_frame = ctk.CTkFrame(self, width=240)
+        # Bal oldali panel: Beállítások
+        self.param_frame = ctk.CTkFrame(self, width=260)
         self.param_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-        self.param_title = ctk.CTkLabel(self.param_frame, text="Beállítások", font=("Arial",16, "bold"))
+
+        self.param_title = ctk.CTkLabel(self.param_frame, text="Beállítások", font=("Arial", 16, "bold"))
         self.param_title.pack(padx=10, pady=10)
 
+        self.mode = ctk.CTkSegmentedButton(
+            self.param_frame,
+            values=["Automata", "Manuális"],
+            command=self._on_mode_change
+        )
+        self.mode.set("Automata")
+        self.mode.pack(fill="x", padx=10, pady=5)
+
         self.lbl_bits = ctk.CTkLabel(self.param_frame, text="Bitek száma (8-32):", anchor="w")
-        self.lbl_bits.pack(fill="x", padx=10, pady=(10,0))
-        self.bits = ctk.CTkEntry(self.param_frame)
-        self.bits.insert(0, "16")
+        self.lbl_bits.pack(fill="x", padx=10, pady=(10, 0))
+
+        self.bits_var = ctk.StringVar(value="16")
+        self.bits_var.trace_add("write", lambda *_: self._revalidate())
+        self.bits = ctk.CTkEntry(self.param_frame, textvariable=self.bits_var)
         self.bits.pack(fill="x", padx=10, pady=5)
 
-        #Csatornazaj csuszka
-        self.lbl_noise = ctk.CTkLabel(self.param_frame, text="Csatornazaj: 0.0", anchor="w")
-        self.lbl_noise.pack(fill="x", padx=10, pady=(10,0))
-        self.noise = ctk.CTkSlider(self.param_frame,from_=0.0, to=0.5, number_of_steps=50, command=self._on_noise_change)
+        # Csatornazaj csúszka
+        self.lbl_noise = ctk.CTkLabel(self.param_frame, text="Csatornazaj: 0.00", anchor="w")
+        self.lbl_noise.pack(fill="x", padx=10, pady=(10, 0))
+        self.noise = ctk.CTkSlider(self.param_frame, from_=0.0, to=0.5, number_of_steps=50, command=self._on_noise_change)
         self.noise.set(0.0)
         self.noise.pack(fill="x", padx=10, pady=5)
 
-        #Eve lehallgatas
-        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van")
-        self.eve.pack(fill="x", padx=10, pady=(10,15))
+        # Eve lehallgatás
+        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._refresh_layout)
+        self.eve.pack(fill="x", padx=10, pady=(10, 15))
 
-        #Alkalmaz gomb
+        # Manuális beviteli mezők
+        self._make_field("alice_bits",  "Alice bitjei (0/1):",   parse_bits,  "01")
+        self._make_field("alice_bases", "Alice bázisai (+/x):",  parse_bases, "+x")
+        self._make_field("bob_bases",   "Bob bázisai (+/x):",    parse_bases, "+x")
+        self._make_field("eve_bases",   "Eve bázisai (+/x):",    parse_bases, "+x")
+
+        # Alkalmaz gomb
         self.btn_apply = ctk.CTkButton(self.param_frame, text="Alkalmaz", command=self._on_apply_config)
         self.btn_apply.pack(fill="x", padx=10, pady=20)
 
+        # Jobb oldali panel
         self.right_frame = ctk.CTkFrame(self)
         self.right_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
         self.step_label = ctk.CTkLabel(self.right_frame, text="Lépés: 0/9 - SETUP", font=("Arial", 16, "bold"))
         self.step_label.pack(pady=10)
 
-        #táblázat
+        # Táblázat
         self.table_frame = ctk.CTkScrollableFrame(self.right_frame, orientation="horizontal", height=240)
         self.table_frame.pack(fill="x", padx=10, pady=5)
 
@@ -68,6 +149,7 @@ class BB84App(ctk.CTk):
         self.info_label = ctk.CTkLabel(self.info_card, text="A szimuláció indításra kész.", wraplength=600)
         self.info_label.pack(padx=10, pady=10)
 
+        # Vezérlőgombok
         self.control_frame = ctk.CTkFrame(self.right_frame)
         self.control_frame.pack(fill="x", padx=10, pady=10)
 
@@ -84,6 +166,7 @@ class BB84App(ctk.CTk):
         self.btn_run_to_end.pack(side="left", padx=5, pady=5, expand=True)
 
         self.update_ui()
+        self._refresh_layout()
 
     def _on_reset(self):
         self.sim.reset()
@@ -94,10 +177,14 @@ class BB84App(ctk.CTk):
         self.update_ui()
 
     def _on_next(self):
+        if not self._revalidate():
+            return
         self.sim.next_step()
         self.update_ui()
 
     def _on_run_to_end(self):
+        if not self._revalidate():
+            return
         self.sim.run_to_end()
         self.update_ui()
 
@@ -110,21 +197,42 @@ class BB84App(ctk.CTk):
         self.lbl_noise.configure(text=f"Csatornazaj: {value:.2f}")
 
     def _on_apply_config(self):
+        # Ha manuális módban érvénytelen az adat, nem indul el a futtatás
+        if not self._revalidate():
+            return
+
         try:
             n = int(self.bits.get())
-            if n < 8:
-                n = 8
-            elif n>32:
-                n=32
+            n = max(8, min(n, 32))
         except ValueError:
-            n=16
-        self.bits.delete(0, "end")
-        self.bits.insert(0, str(n))
+            n = 16
+
+        self.bits_var.set(str(n))
 
         noise = float(self.noise.get())
         eve = bool(self.eve.get())
 
-        sc = SimConfig(n_bits=n, eve_present=eve, noise_rate=noise)
+        manual_alice_bits = None
+        manual_alice_bases = None
+        manual_bob_bases = None
+        manual_eve_bases = None
+
+        if self.mode.get() == "Manuális":
+            manual_alice_bits = self.fields["alice_bits"]["parser"](self.fields["alice_bits"]["var"].get(), n)
+            manual_alice_bases = self.fields["alice_bases"]["parser"](self.fields["alice_bases"]["var"].get(), n)
+            manual_bob_bases = self.fields["bob_bases"]["parser"](self.fields["bob_bases"]["var"].get(), n)
+            if eve:
+                manual_eve_bases = self.fields["eve_bases"]["parser"](self.fields["eve_bases"]["var"].get(), n)
+
+        sc = SimConfig(
+            n_bits=n,
+            eve_present=eve,
+            noise_rate=noise,
+            manual_alice_bits=manual_alice_bits,
+            manual_alice_bases=manual_alice_bases,
+            manual_bob_bases=manual_bob_bases,
+            manual_eve_bases=manual_eve_bases
+        )
         self.sim = BB84Simulation(sc)
         self.update_ui()
 
@@ -137,28 +245,124 @@ class BB84App(ctk.CTk):
 
         rows = [
             ("Index:", list(range(n))),
-            ("Alice bits:", state.alice_bits if state.alice_bits else ["-"]*n),
-            ("Alice bázis:", [basis_to_symbol(b) for b in state.alice_bases] if state.alice_bases else ["-"]*n),
-            ("Alice photons:", [photon_to_symbol(p) for p in state.photons] if state.photons else ["-"]*n)
+            ("Alice bits:", state.alice_bits if state.alice_bits else ["-"] * n),
+            ("Alice bázis:", [basis_to_symbol(b) for b in state.alice_bases] if state.alice_bases else ["-"] * n),
+            ("Alice photons:", [photon_to_symbol(p) for p in state.photons] if state.photons else ["-"] * n)
         ]
 
         if self.sim.config.eve_present:
-            rows.append(("Eve bázis:", [basis_to_symbol(b) for b in state.eve_bases] if state.eve_bases else ["-"]*n)),
-            rows.append(("Eve észlelés:", [str(b) if b is not None else "-" for b in state.eve_bits] if state.eve_bits else ["-"]*n))
+            rows.append(("Eve bázis:", [basis_to_symbol(b) for b in state.eve_bases] if state.eve_bases else ["-"] * n))
+            rows.append(("Eve észlelés:", [str(b) if b is not None else "-" for b in state.eve_bits] if state.eve_bits else ["-"] * n))
 
         rows.extend([
-            ("Bob bázis:", [basis_to_symbol(b) for b in state.bob_bases] if state.bob_bases else ["-"]*n),
-            ("Bob mérés:", [str(b) if b is not None else "-" for b in state.bob_bits] if state.bob_bits else ["-"]*n)
+            ("Bob bázis:", [basis_to_symbol(b) for b in state.bob_bases] if state.bob_bases else ["-"] * n),
+            ("Bob mérés:", [str(b) if b is not None else "-" for b in state.bob_bits] if state.bob_bits else ["-"] * n)
         ])
 
         row_count = len(rows)
-        height = min(row_count*32+45, 320)
+        height = min(row_count * 32 + 45, 320)
         self.table_frame.configure(height=height)
 
         for r, (label_text, values) in enumerate(rows):
             header = ctk.CTkLabel(self.table_frame, text=label_text, width=95, anchor="w", font=("Arial", 15, "bold"))
-            header.grid(row = r, column=0, padx=(5,10), pady=2, sticky="w")
+            header.grid(row=r, column=0, padx=(5, 10), pady=2, sticky="w")
 
             for c, val in enumerate(values):
                 cell = ctk.CTkLabel(self.table_frame, text=str(val), width=32, height=26, fg_color=("gray85", "gray25"), corner_radius=4)
-                cell.grid(row = r, column=c + 1, padx=2, pady=2)
+                cell.grid(row=r, column=c + 1, padx=2, pady=2)
+
+    def _make_field(self, key, label, parser, alphabet):
+        frame = ctk.CTkFrame(self.param_frame, fg_color="transparent")
+        ctk.CTkLabel(frame, text=label, anchor="w").pack(fill="x")
+        row = ctk.CTkFrame(frame, fg_color="transparent")
+        row.pack(fill="x", pady=(2, 5))
+
+        var = ctk.StringVar()
+        entry = ctk.CTkEntry(row, textvariable=var)
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        # 🎲 gomb a specifikáció szerint
+        btn_dice = ctk.CTkButton(row, text="🎲", width=36, command=lambda: self._randomize(key))
+        btn_dice.pack(side="left")
+
+        field_data = {
+            "frame": frame,
+            "var": var,
+            "entry": entry,
+            "parser": parser,
+            "alphabet": alphabet,
+            "error": ""
+        }
+
+        # Tooltip bekötése a mezőre
+        CTkTooltip(entry, lambda: field_data["error"])
+
+        var.trace_add("write", lambda *_: self._revalidate())
+        self.fields[key] = field_data
+
+    def _refresh_layout(self, *args):
+        for f in self.fields.values():
+            f["frame"].pack_forget()
+
+        if self.mode.get() == "Manuális":
+            keys = ["alice_bits", "alice_bases", "bob_bases"] + (["eve_bases"] if self.eve.get() else [])
+            for k in keys:
+                self.fields[k]["frame"].pack(fill="x", padx=10, before=self.btn_apply)
+
+        self._revalidate()
+
+    def _on_mode_change(self, mode_value=None):
+        self._refresh_layout()
+
+    def _randomize(self, key):
+        try:
+            n = int(self.bits.get())
+        except ValueError:
+            n = 16
+        f = self.fields[key]
+        f["var"].set("".join(random.choice(f["alphabet"]) for _ in range(n)))
+
+    def _revalidate(self) -> bool:
+        if self.mode.get() != "Manuális":
+            # Automata módban engedélyezzük a gombokat
+            self.btn_apply.configure(state="normal")
+            self.btn_next.configure(state="normal")
+            self.btn_run_to_end.configure(state="normal")
+            return True
+
+        try:
+            n = int(self.bits.get())
+            if not (8 <= n <= 32):
+                n = None
+        except ValueError:
+            n = None
+
+        ok = True
+        keys = ["alice_bits", "alice_bases", "bob_bases"] + (["eve_bases"] if self.eve.get() else [])
+
+        for k in keys:
+            f = self.fields[k]
+            val = f["var"].get()
+
+            if n is None:
+                f["entry"].configure(border_color="red")
+                f["error"] = "A bitek száma 8 és 32 közötti egész szám kell legyen!"
+                ok = False
+                continue
+
+            try:
+                f["parser"](val, n)
+                f["entry"].configure(border_color=self.default_border)
+                f["error"] = ""
+            except ValueError as e:
+                f["entry"].configure(border_color="red")
+                f["error"] = str(e)
+                ok = False
+
+        # Ha hibás a bevitel, letiltjuk a végrehajtó gombokat (Kész, ha: futtatás nem indul el)
+        state_str = "normal" if ok else "disabled"
+        self.btn_apply.configure(state=state_str)
+        self.btn_next.configure(state=state_str)
+        self.btn_run_to_end.configure(state=state_str)
+
+        return ok
