@@ -46,31 +46,25 @@ class SimConfig:
     manual_eve_bases: Optional[list[Basis]] = None
 
 
-#Az adott állapotnak a gui-nak küldött adatai
 @dataclass
 class SimState:
     step: Step = Step.SETUP
     config: SimConfig = field(default_factory=SimConfig)
 
-    #Alice adatai
     alice_bits: list[int] = field(default_factory=list)
     alice_bases: list[Basis] = field(default_factory=list)
     photons: list[Photon] = field(default_factory=list)
 
-    #Eve adatai 
     eve_bits: list[Optional[int]] = field(default_factory=list)
     eve_bases: list[Optional[Basis]] = field(default_factory=list)
     sent_photons: list[Photon] = field(default_factory=list)
 
-    #Bob adatai
     bob_bits: list[int] = field(default_factory=list)
     bob_bases: list[Basis] = field(default_factory=list)
 
-    #Utofeldolgozas
     sifted_indices: list[int] = field(default_factory=list)
     sample_indices: list[int] = field(default_factory=list)
 
-    #Eredmenyek
     qber: Optional[float] = None
     expected_qber: Optional[float] = None
     key_accepted: Optional[bool] = None

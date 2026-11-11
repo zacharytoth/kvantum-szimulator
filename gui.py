@@ -21,7 +21,6 @@ def photon_to_symbol(photon) -> str:
     return symbols.get(angle, "?")
 
 class CTkTooltip:
-    """Lebegő tooltip hibaüzenetek és információk megjelenítésére."""
     def __init__(self, widget, get_text_func):
         self.widget = widget
         self.get_text_func = get_text_func
@@ -190,7 +189,6 @@ class BB84App(ctk.CTk):
         self.lbl_noise.configure(text=f"Csatornazaj: {value:.2f}")
 
     def _on_apply_config(self):
-        # Ha manuális módban érvénytelen az adat, nem indul el a futtatás
         if not self._revalidate():
             return
 
@@ -340,7 +338,6 @@ class BB84App(ctk.CTk):
 
     def _revalidate(self) -> bool:
         if self.mode.get() != "Manuális":
-            # Automata módban engedélyezzük a gombokat
             self.btn_apply.configure(state="normal")
             self.btn_next.configure(state="normal")
             self.btn_run_to_end.configure(state="normal")
