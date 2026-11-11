@@ -33,7 +33,6 @@ STEP_DESCRIPTIONS = {
         "Ezt a bázisválasztást egyelőre nem osztja meg senkivel."
     ,
     Step.ENCODE: (
-        "🔒 Kvantumállapot (Fotonok generálása)\n\n"
         "Alice a biteket és bázisokat fotonok polarizációs állapotává kódolja: "
         "+ bázisnál 0→→, 1→↑; x bázisnál 0→↗, 1→↖. A fotonok készen állnak az átvitelre."
     ),
@@ -81,18 +80,19 @@ class BB84App(ctk.CTk):
         self.param_frame = ctk.CTkFrame(self, width=260)
         self.param_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
 
-        self.param_title = ctk.CTkLabel(self.param_frame, text="Beállítások", font=("Arial", 16, "bold"))
+        self.param_title = ctk.CTkLabel(self.param_frame, text="Beállítások", font=("Arial", 16))
         self.param_title.pack(padx=10, pady=10)
 
         self.mode = ctk.CTkSegmentedButton(
             self.param_frame,
             values=["Automata", "Manuális"],
+            font=("Segoe UI", 16),
             command=self._on_mode_change
         )
         self.mode.set("Automata")
         self.mode.pack(fill="x", padx=10, pady=5)
 
-        self.lbl_bits = ctk.CTkLabel(self.param_frame, text="Bitek száma (8-32):", anchor="w")
+        self.lbl_bits = ctk.CTkLabel(self.param_frame, text="Bitek száma (8-32):", font=("Segoe UI", 16), anchor="w")
         self.lbl_bits.pack(fill="x", padx=10, pady=(10, 0))
 
         self.bits_var = ctk.StringVar(value="16")
@@ -100,15 +100,15 @@ class BB84App(ctk.CTk):
         self.bits = ctk.CTkEntry(self.param_frame, textvariable=self.bits_var)
         self.bits.pack(fill="x", padx=10, pady=5)
 
-        self.lbl_noise = ctk.CTkLabel(self.param_frame, text="Csatornazaj: 0.00", anchor="w")
+        self.lbl_noise = ctk.CTkLabel(self.param_frame, text="Csatornazaj: 0.00", font=("Segoe UI", 16),  anchor="w")
         self.lbl_noise.pack(fill="x", padx=10, pady=(10, 0))
         self.noise = ctk.CTkSlider(self.param_frame, from_=0.0, to=0.5, number_of_steps=50, command=self._on_noise_change)
         self.noise.set(0.0)
         self.noise.pack(fill="x", padx=10, pady=5)
 
-        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", command=self._on_eve_toggle)
+        self.eve = ctk.CTkSwitch(self.param_frame, text="Eve jelen van", font=("Segoe UI", 16), command=self._on_eve_toggle)
         self.eve.pack(fill="x", padx=10, pady=(10,15))
-        self.lbl_eve_ratio = ctk.CTkLabel(self.param_frame, text="Eve arány 1.00", anchor="w")
+        self.lbl_eve_ratio = ctk.CTkLabel(self.param_frame, text="Eve arány 1.00", font=("Segoe UI", 16), anchor="w")
         self.slider_eve_ratio = ctk.CTkSlider(self.param_frame, from_=0.0, to=1.0, number_of_steps=20, command=self._on_eve_ratio_change)
         self.slider_eve_ratio.set(1.0)
 
@@ -117,7 +117,7 @@ class BB84App(ctk.CTk):
         self._make_field("bob_bases",   "Bob bázisai (+/x):",    parse_bases, "+x")
         self._make_field("eve_bases",   "Eve bázisai (+/x):",    parse_bases, "+x")
 
-        self.btn_apply = ctk.CTkButton(self.param_frame, text="Alkalmaz", command=self._on_apply_config)
+        self.btn_apply = ctk.CTkButton(self.param_frame, text="Alkalmaz", font=("Segoe UI", 16), command=self._on_apply_config)
         self.btn_apply.pack(fill="x", padx=10, pady=20)
 
         self.right_frame = ctk.CTkFrame(self)
@@ -131,22 +131,22 @@ class BB84App(ctk.CTk):
 
         self.info_card = ctk.CTkFrame(self.right_frame)
         self.info_card.pack(fill="both", expand=True, padx=10, pady=10)
-        self.info_label = ctk.CTkLabel(self.info_card, text="", wraplength=600)
+        self.info_label = ctk.CTkLabel(self.info_card, text="", wraplength=600, font=("Segoe UI", 20))
         self.info_label.pack(padx=10, pady=10)
 
         self.control_frame = ctk.CTkFrame(self.right_frame)
         self.control_frame.pack(fill="x", padx=10, pady=10)
 
-        self.btn_reset = ctk.CTkButton(self.control_frame, text="Reset", command=self._on_reset)
+        self.btn_reset = ctk.CTkButton(self.control_frame, text="Reset", font=("Segoe UI", 16), command=self._on_reset)
         self.btn_reset.pack(side="left", padx=5, pady=5, expand=True)
 
-        self.btn_prev = ctk.CTkButton(self.control_frame, text="<< Vissza", command=self._on_prev)
+        self.btn_prev = ctk.CTkButton(self.control_frame, text="<< Vissza", font=("Segoe UI", 16), command=self._on_prev)
         self.btn_prev.pack(side="left", padx=5, pady=5, expand=True)
 
-        self.btn_next = ctk.CTkButton(self.control_frame, text="Előre >>", command=self._on_next)
+        self.btn_next = ctk.CTkButton(self.control_frame, text="Előre >>", font=("Segoe UI", 16), command=self._on_next)
         self.btn_next.pack(side="left", padx=5, pady=5, expand=True)
 
-        self.btn_run_to_end = ctk.CTkButton(self.control_frame, text="Végig >>", command=self._on_run_to_end)
+        self.btn_run_to_end = ctk.CTkButton(self.control_frame, text="Végig >>", font=("Segoe UI", 16), command=self._on_run_to_end)
         self.btn_run_to_end.pack(side="left", padx=5, pady=5, expand=True)
 
         self.update_ui()
@@ -234,7 +234,7 @@ class BB84App(ctk.CTk):
             ("Index:", list(range(n))),
             ("Alice bits:", state.alice_bits if state.alice_bits else ["-"] * n),
             ("Alice bázis:", [basis_to_symbol(b) for b in state.alice_bases] if state.alice_bases else ["-"] * n),
-            ("Alice photons:", [photon_to_symbol(p) for p in state.photons] if state.photons else ["-"] * n)
+            ("Alice fotonjai:", [photon_to_symbol(p) for p in state.photons] if state.photons else ["-"] * n)
         ]
 
         if self.sim.config.eve_present:
