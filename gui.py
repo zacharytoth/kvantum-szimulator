@@ -7,7 +7,6 @@ def basis_to_symbol(basis) -> str:
         return "-"
     return "+" if basis.name == "RECTILINEAR" else "x"
 
-
 def photon_to_symbol(photon) -> str:
     if photon is None:
         return "-"
@@ -75,7 +74,7 @@ class BB84App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("BB84 Kvantum-kriptográfiai Szimulátor")
-        self.geometry("1150x740")
+        self.geometry("1150x790")
         self.minsize(960, 660)
 
         self.default_border = ctk.ThemeManager.theme["CTkEntry"]["border_color"]
@@ -153,19 +152,8 @@ class BB84App(ctk.CTk):
         self.table_frame = ctk.CTkScrollableFrame(self.right_frame, orientation="horizontal", height=250, corner_radius=10)
         self.table_frame.pack(fill="x", padx=14, pady=6)
 
-        self.info_card = ctk.CTkFrame(self.right_frame, corner_radius=10)
-        self.info_card.pack(fill="both", expand=True, padx=14, pady=10)
-        self.info_label = ctk.CTkLabel(
-            self.info_card,
-            text="",
-            wraplength=680,
-            font=FONT_INFO,
-            justify="center"
-        )
-        self.info_label.pack(expand=True, padx=20, pady=20)
-
         self.control_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        self.control_frame.pack(fill="x", padx=14, pady=(4, 14))
+        self.control_frame.pack(side="bottom", fill="x", padx=14, pady=(4, 14))
 
         self.btn_reset = ctk.CTkButton(self.control_frame, text="Reset", font=FONT_BUTTON, height=40, corner_radius=8, command=self._on_reset)
         self.btn_reset.pack(side="left", padx=6, pady=4, expand=True, fill="x")
@@ -178,6 +166,20 @@ class BB84App(ctk.CTk):
 
         self.btn_run_to_end = ctk.CTkButton(self.control_frame, text="Végig >>", font=FONT_BUTTON, height=40, corner_radius=8, command=self._on_run_to_end)
         self.btn_run_to_end.pack(side="left", padx=6, pady=4, expand=True, fill="x")
+
+        self.info_card = ctk.CTkFrame(self.right_frame, corner_radius=10)
+        self.info_card.pack(fill="both", expand=True, padx=14, pady=10)
+        self.info_label = ctk.CTkLabel(
+            self.info_card,
+            text="",
+            wraplength=680,
+            font=FONT_INFO,
+            justify="center"
+        )
+        self.info_label.pack(padx=20, pady=20)
+
+        self.stats_frame = ctk.CTkFrame(self.info_card, fg_color="transparent")
+        self.stats_frame.pack(fill="both", expand=True)
 
         self.update_ui()
         self._refresh_layout()
@@ -208,6 +210,7 @@ class BB84App(ctk.CTk):
         step = STEP_DESCRIPTIONS.get(state.step, "Ismeretlen lépés")
         self.info_label.configure(text=step)
         self._render_table()
+        self._render_info_card()
 
     def _on_noise_change(self, value):
         self.lbl_noise.configure(text=f"Csatornazaj: {value:.2f}")
@@ -412,3 +415,53 @@ class BB84App(ctk.CTk):
         self.btn_run_to_end.configure(state=state_str)
 
         return ok
+
+    def _render_info_card(self):
+        for widget in self.stats_frame.winfo_children():
+            widget.destroy()
+
+        state = self.sim.state
+        config = self.sim.config
+
+        if getattr(state, "qber", None) is None:
+            return
+
+        qber = state.qber
+        threshold = getattr(config, "qber_threshold", 0.11)
+        expected = getattr(state, "expected_qber", 0.0)
+
+        is_safe = qber <= threshold
+        if is_safe:
+           bgcolor = "#2E7D32"
+           lbl_text = "Biztonságos! A kulcs el lett fogadva!"
+        else:
+            bgcolor = "#C62828"
+            lbl_text = "VESZÉLY! Magas lehallgatásra utaló jelek miatt a kulcs el lett dobva!"
+
+        lbl_banner = ctk.CTkLabel(self.stats_frame, fg_color=bgcolor, text=lbl_text, text_color="white", font=("Arial", 14, "bold"), corner_radius=6)
+        lbl_banner.pack(fill="x", padx=10, pady=(10,10), ipady=5)
+
+        lbl_qber = ctk.CTkLabel(self.stats_frame, text=f"Mért QBER: {qber*100:.1f}% (Küszöb: {threshold*100:.1f}%)", font=("Arial", 12, "bold"))
+        lbl_qber.pack(fill="x", padx=10)
+
+        pb_container = ctk.CTkFrame(self.stats_frame, fg_color="transparent")
+        pb_container.pack(fill="x", padx=10, pady=(2,10))
+
+        pb = ctk.CTkProgressBar(pb_container, height=12, progress_color=bgcolor)
+        pb.pack(fill="x")
+        pb.set(min(qber, 1.0))
+
+        threshold_marker = ctk.CTkFrame(pb_container, width=2, height=16, fg_color="white", corner_radius=0)
+        threshold_marker.place(relx=threshold, rely=0.5, anchor="center")
+
+        if config.eve_present:
+            test_bits=len(state.sifted_indices) // 2 if hasattr(state, "sifted_indices") and state.sifted_indices else 1
+            p_hidden = (1-expected) ** max(1, test_bits)
+
+            lbl_eve_sneaky = ctk.CTkLabel(self.stats_frame, text=f"Eve rejtve maradásának esélye: {p_hidden*100:.2f}%", text_color="#FFB74D", font=("Arial", 12, "italic"))
+            lbl_eve_sneaky.pack(fill="x", padx=10, pady=5)
+
+        if  is_safe and getattr(state, "shared_key", None):
+            key = "".join(map(str, state.shared_key))
+            lbl_key = ctk.CTkLabel(self.stats_frame, text=f"Végső közös kulcs: {key}", font=("Courier New", 18, "bold"), text_color="#4FC3F7")
+            lbl_key.pack(pady=15)
