@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases, estimate_qber
+from bb84_core import BB84Simulation, SimConfig, Step, parse_bits, parse_bases, undetected_probability
 import random
 
 def basis_to_symbol(basis) -> str:
@@ -38,7 +38,7 @@ STEP_DESCRIPTIONS = {
     ,
     Step.TRANSMIT:
         "A fotonok áthaladnak a kvantumcsatornán, kitéve a csatornazajnak. "
-        "Ha Eve aktív, elfogja és megméri a fotonokat, megváltoztatva az állapotukat a továbbküldés előtt."
+        "Ha Eve aktív, a lila cellák jelzik, ahol rossz bázist választva módosította a fotont, a sötétszürkék pedig ahol eltalálta Alice bázisát."
     ,
     Step.BOB_BASES:
         "Bob függetlenül és véletlenszerűen választ mérési bázist (+ vagy x) minden egyes beérkező fotonhoz. "
@@ -49,16 +49,16 @@ STEP_DESCRIPTIONS = {
         "Egyező bázisnál az eredmény determinisztikus, míg eltérő bázisnál 50% eséllyel hibás bitet kap."
     ,
     Step.SIFTING:
-        "Alice és Bob nyilvánosan megosztják a mérési bázisaikat, de a bitek titkosak maradnak. "
-        "Az eltérő bázisú pozíciókat kidobják; a megmaradt bitek képezik a szitált (sifted) kulcsot."
+        "Alice és Bob nyilvánosan egyeztetik a bázisaikat (a bitek titkosak maradnak). "
+        "A zöld oszlopok jelzik a megtartott (egyező bázisú) szitált biteket, a halványszürkék pedig az eldobott (eltérő bázisú) pozíciókat."
     ,
     Step.QBER:
-        "A felek nyilvánosan feláldoznak és összehasonlítanak egy mintát a szitált bitekből a hibaarány (QBER) ellenőrzésére. "
-        "A tesztelt biteket ezután véglegesen törlik a kulcsból."
+        "A felek nyilvánosan összevetnek egy mintát a szitált bitekből a hibaarány (QBER) becslésére, majd ezeket elhagyni kényszerülnek. "
+        "A kék oszlopok az egyező mintabiteket, a pirosak a felfedezett hibákat, a zöldek pedig a megmaradó kulcsbiteket jelölik."
     ,
     Step.RESULT:
-        "Ha a mért QBER meghaladja a küszöbértéket, riasztás lép életbe és a felek eldobják a kulcsot. "
-        "Megfelelően alacsony hiba esetén a megmaradt bitek adják a végleges, biztonságos titkos kulcsot."
+        "Ha a mért QBER meghaladja a küszöbértéket, riasztás lép életbe és a kulcsot eldobják. "
+        "Alacsony hiba esetén a zöld oszlopokban maradt (nem mintavételezett) bitek alkotják a végleges közös titkos kulcsot."
     ,
 }
 
@@ -301,20 +301,42 @@ class BB84App(ctk.CTk):
         height = min(row_count * 34 + 35, 310)
         self.table_frame.configure(height=height)
 
+        sifted_set = set(state.sifted_indices) if state.step >= Step.SIFTING else set()
+        sample_set = set(state.sample_indices) if state.step >= Step.QBER else set()
+
         for r, (label_text, values) in enumerate(rows):
             header = ctk.CTkLabel(self.table_frame, text=label_text, width=110, anchor="w", font=FONT_TABLE_HEADER)
             header.grid(row=r, column=0, padx=(6, 12), pady=2, sticky="w")
 
             for c, val in enumerate(values):
                 bgcolor = ("gray85", "gray25")
+                textcolor = ("gray10", "gray95")
 
                 eve_intercepted = (self.sim.config.eve_ratio and bool(state.eve_bases) and c < len(state.eve_bases) and state.eve_bases[c] is not None)
                 photon_modified = (eve_intercepted and bool(state.alice_bases) and c < len(state.alice_bases) and state.alice_bases[c] != state.eve_bases[c])
 
+                if state.step >= Step.SIFTING:
+                    if c not in sifted_set:
+                        bgcolor = ("gray90", "#1E1E20")
+                        textcolor = ("gray55", "gray45")
+                    elif state.step >= Step.QBER and c in sample_set:
+                        is_error = (
+                            c < len(state.alice_bits)
+                            and c < len(state.bob_bits)
+                            and state.alice_bits[c] != state.bob_bits[c]
+                        )
+                        bgcolor = "#B71C1C" if is_error else "#1565C0"
+                        textcolor = "white"
+                    else:
+                        bgcolor = "#1B5E20"
+                        textcolor = "white"
+
                 if photon_modified and "Eve" in label_text and str(val) != "-":
                     bgcolor = "#6A0DAD"
+                    textcolor = "white"
                 elif eve_intercepted and "Eve" in label_text and str(val) != "-":
                     bgcolor = "#3A3A3C"
+                    textcolor = "white"
 
                 cell = ctk.CTkLabel(
                     self.table_frame,
@@ -322,6 +344,7 @@ class BB84App(ctk.CTk):
                     width=34,
                     height=28,
                     fg_color=bgcolor,
+                    text_color=textcolor,
                     corner_radius=6,
                     font=FONT_TABLE_CELL
                 )
@@ -455,9 +478,16 @@ class BB84App(ctk.CTk):
         threshold = getattr(config, "qber_threshold", 0.11)
         sifted = state.sifted_indices
 
-        qber = estimate_qber(state.alice_bits, state.bob_bits, sifted) if sifted else 0.0
+        # A QBER-t Alice és Bob csak a felfedett MINTÁN tudja kiszámolni,
+        # ezért a core által (a mintán) számolt értéket mutatjuk, nem számolunk újat.
+        qber = state.qber
         has_enough_bits = bool(sifted) and len(sifted) > len(state.sample_indices)
-        is_safe = has_enough_bits and qber <= threshold
+        if state.step == Step.RESULT:
+            # A végső döntést a core hozza; a GUI csak megjeleníti.
+            is_safe = bool(state.key_accepted)
+        else:
+            # QBER lépés: még nincs döntés, de ugyanazzal a szabállyal előre jelezzük.
+            is_safe = has_enough_bits and qber <= threshold
         bgcolor = "#2E7D32" if is_safe else "#C62828"
 
         qber_card = ctk.CTkFrame(self.stats_frame, fg_color=("gray88", "gray20"), corner_radius=8)
@@ -468,18 +498,18 @@ class BB84App(ctk.CTk):
 
         ctk.CTkLabel(
             qber_header,
-            text=f"Mért QBER: {qber*100:.1f}%",
-            font=FONT_LABEL,
+            text=f"Küszöbérték: {threshold*100:.1f}%",
+            font=FONT_TABLE_HEADER,
+            text_color=("gray35", "gray70"),
             anchor="w"
         ).pack(side="left")
 
         ctk.CTkLabel(
             qber_header,
-            text=f"Küszöbérték: {threshold*100:.1f}%",
-            font=FONT_TABLE_HEADER,
-            text_color=("gray35", "gray70"),
-            anchor="e"
-        ).pack(side="right")
+            text=f"Mért QBER: {qber*100:.1f}%",
+            font=FONT_LABEL,
+            anchor="center"
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
         pb_container = ctk.CTkFrame(qber_card, fg_color="transparent")
         pb_container.pack(fill="x", padx=12, pady=(2, 8))
@@ -492,11 +522,13 @@ class BB84App(ctk.CTk):
         threshold_marker.place(relx=threshold, rely=0.5, anchor="center")
 
         if config.eve_present:
-            intercepted_sifted = sum(
-                1 for i in sifted
+            # Eve csak a felfedett mintabiteken bukhat le: minden általa elfogott
+            # mintabit 1/4 eséllyel hibát okoz, így P(rejtve) = (3/4)^k.
+            k = sum(
+                1 for i in state.sample_indices
                 if i < len(state.eve_bases) and state.eve_bases[i] is not None
             )
-            p_hidden = (0.75) ** intercepted_sifted
+            p_hidden = undetected_probability(k)
 
             lbl_eve_sneaky = ctk.CTkLabel(
                 qber_card,
