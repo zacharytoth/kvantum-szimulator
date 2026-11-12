@@ -478,15 +478,11 @@ class BB84App(ctk.CTk):
         threshold = getattr(config, "qber_threshold", 0.11)
         sifted = state.sifted_indices
 
-        # A QBER-t Alice és Bob csak a felfedett MINTÁN tudja kiszámolni,
-        # ezért a core által (a mintán) számolt értéket mutatjuk, nem számolunk újat.
         qber = state.qber
         has_enough_bits = bool(sifted) and len(sifted) > len(state.sample_indices)
         if state.step == Step.RESULT:
-            # A végső döntést a core hozza; a GUI csak megjeleníti.
             is_safe = bool(state.key_accepted)
         else:
-            # QBER lépés: még nincs döntés, de ugyanazzal a szabállyal előre jelezzük.
             is_safe = has_enough_bits and qber <= threshold
         bgcolor = "#2E7D32" if is_safe else "#C62828"
 
@@ -522,8 +518,6 @@ class BB84App(ctk.CTk):
         threshold_marker.place(relx=threshold, rely=0.5, anchor="center")
 
         if config.eve_present:
-            # Eve csak a felfedett mintabiteken bukhat le: minden általa elfogott
-            # mintabit 1/4 eséllyel hibát okoz, így P(rejtve) = (3/4)^k.
             k = sum(
                 1 for i in state.sample_indices
                 if i < len(state.eve_bases) and state.eve_bases[i] is not None
